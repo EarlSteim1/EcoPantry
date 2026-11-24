@@ -16,7 +16,7 @@
 🍽️ **Skillet-Sautéed Pork, Sweet Corn & Wilted Spinach**  
 *A high-nutrition, zero-waste recipe generated using RAG knowledge grounding and dynamic pantry optimization.*
 
-* ⏱️ **Time & Yield:** 10 mins prep | 10 mins cook | 2 servings | Difficulty: Beginner (Total: ≤20 mins)  
+* ⏱️ **Time & Portions:** 10 mins prep | 10 mins cook | Portion count depends on how much of each ingredient is available | Difficulty: Beginner (Total: ≤20 mins)  
 * 📊 **Macro Profile (Agent Calculated):** ~420 kcal | 32g Protein | 48g Carbs | 11g Fat | 5g Fiber  
 
 #### 🥗 Ingredients
