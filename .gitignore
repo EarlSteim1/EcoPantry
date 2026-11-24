@@ -1,0 +1,19 @@
+# Python Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments & Secrets
+.env
+.venv/
+env/
+venv/
+ENV/
+.streamlit/secrets.toml
+
+# OS & IDE Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
