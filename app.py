@@ -296,6 +296,12 @@ with tab_chat:
     user_prompt = st.chat_input("💬 Ask Chef Eco a question or refine your recipe...")
     prompt_to_run = user_prompt or active_quick
 
+    # Natural Conversational Defaults (Features 1-3 now handled dynamically in chat)
+    leftovers_text = prompt_to_run
+    staples_active = []
+    time_limit = 20
+    diet_choice = "Standard"
+
     if prompt_to_run:
         # Start Telemetry Trace
         trace = telemetry_service.start_trace(prompt_to_run)
