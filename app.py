@@ -2,7 +2,6 @@ import streamlit as st
 import time
 import json
 import os
-import re
 
 # Import Enterprise Modules
 from security import PromptDefenseManager
@@ -16,41 +15,10 @@ Your mission is to help household cooks convert random on-hand ingredients and p
 
 [CORE OPERATIONAL RULES]
 1. Prioritize In-Stock Items: Base all recipes primarily on the user's provided ingredients and checked staples.
-2. Structure Ingredients: Put only the expiring leftovers under 'From Your Kitchen'. Put exactly the checked pantry staples under 'Pantry Staples Assumed'.
+2. Structure Ingredients: Divide into 'From Your Kitchen', 'Pantry Staples Assumed', and 'Smart Substitutes'.
 3. Actionable Steps: Keep steps concise, numbered, and practical for real-time cooking.
 4. Sustainability Focus: Always provide an 'Eco-Tip' on scrap repurposing, storage, or freezing.
-5. Availability: Treat unchecked staples and all unlisted ingredients as unavailable. Never assume oil, salt, pepper, or sauces unless checked.
-6. Serving Amount: Never invent a numeric serving count. When ingredient quantities are unknown, say portion count depends on how much of each ingredient is available.
-7. Safety: Refuse to approve spoiled or foul-smelling food. Boiling cannot neutralize heat-stable enterotoxins."""
-
-def conversation_title(conversation):
-    response = next(
-        (message["content"] for message in conversation if message["role"] == "assistant"),
-        ""
-    )
-    first_line = next((line.strip() for line in response.splitlines() if line.strip()), "")
-    title = re.sub(r"^[^A-Za-z0-9]+", "", first_line)
-    title = re.sub(r"[*_#`]", "", title).strip().rstrip(":")
-    title = re.sub(r"^\d+\s*-\s*minute\s+", "", title, flags=re.IGNORECASE)
-    if title:
-        title = " ".join(title.split()[:5])
-        return title[:1].upper() + title[1:]
-
-    prompt = next(
-        (message["content"] for message in conversation if message["role"] == "user"),
-        "Previous chat"
-    )
-    return " ".join(prompt.split()[:5]).rstrip("?.!,")
-
-
-def remove_assumed_serving_count(response):
-    response = re.sub(r"\bTime\s*&\s*Yield\b", "Time & Portions", response, flags=re.IGNORECASE)
-    return re.sub(
-        r"\b(?:serves?|yield)\s*:?\s*\d+\s*(?:servings?)?\b|\b\d+\s+servings?\b",
-        "Portion count depends on how much of each ingredient is available",
-        response,
-        flags=re.IGNORECASE
-    )
+5. Safety: Refuse to approve spoiled or foul-smelling food. Boiling cannot neutralize heat-stable enterotoxins."""
 
 
 # =====================================================================
@@ -137,12 +105,6 @@ if "messages" not in st.session_state:
         }
     ]
 
-if "conversation_history" not in st.session_state:
-    st.session_state.conversation_history = []
-
-if "selected_history_index" not in st.session_state:
-    st.session_state.selected_history_index = None
-
 if "waste_saved_lbs" not in st.session_state:
     st.session_state.waste_saved_lbs = 1.4
 
@@ -158,20 +120,6 @@ with st.sidebar:
         unsafe_allow_html=True
     )
     st.divider()
-
-    st.markdown("#### 💬 Conversation history")
-    if not st.session_state.conversation_history:
-        st.caption("Previous conversations will appear here after reset.")
-    else:
-        st.caption("Click a keyword to view the conversation.")
-        for index in range(len(st.session_state.conversation_history) - 1, -1, -1):
-            conversation = st.session_state.conversation_history[index]
-            if st.button(
-                conversation_title(conversation),
-                key=f"history_conversation_{index}",
-                width="stretch"
-            ):
-                st.session_state.selected_history_index = index
 
     # AI Engine Settings
     st.markdown("#### ⚙️ **Inference Engine**")
@@ -197,6 +145,39 @@ with st.sidebar:
     st.divider()
 
     # Feature 1: Staples Form
+    st.markdown("#### 🧂 **Pantry Staples On Hand**")
+    c1, c2 = st.columns(2)
+    with c1:
+        st_oil = st.checkbox("Cooking Oil", value=True)
+        st_garlic = st.checkbox("Garlic / Onion", value=True)
+        st_rice = st.checkbox("Rice / Pasta", value=True)
+    with c2:
+        st_eggs = st.checkbox("Eggs", value=False)
+        st_dairy = st.checkbox("Butter / Milk", value=True)
+        st_soy = st.checkbox("Soy Sauce", value=False)
+
+    staples_active = []
+    if st_oil: staples_active.append("Cooking Oil")
+    if st_garlic: staples_active.append("Garlic/Onion")
+    if st_rice: staples_active.append("Rice/Pasta")
+    if st_eggs: staples_active.append("Eggs")
+    if st_dairy: staples_active.append("Butter/Milk")
+    if st_soy: staples_active.append("Soy Sauce")
+
+    # Feature 2: Leftovers Input
+    st.markdown("#### 🥬 **Fridge Leftovers to Rescue**")
+    leftovers_text = st.text_input(
+        "Expiring items:",
+        value="baby spinach, cooked pork loin, sweet corn",
+        placeholder="e.g., wilting kale, sour cream, roast chicken"
+    )
+
+    # Feature 3: Constraints & Preferences
+    st.markdown("#### ⏱️ **Cooking Constraints**")
+    time_limit = st.slider("Max Time:", 10, 60, 25, 5, format="%d mins")
+    diet_choice = st.selectbox("Dietary Restriction:", ["Standard / None", "Vegetarian", "Vegan", "Gluten-Free", "Dairy-Free"])
+
+    st.divider()
 
     # Feature 4: Live Sustainability Scorecard
     st.markdown("#### 📊 **Sustainability Metrics**")
@@ -210,37 +191,11 @@ with st.sidebar:
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("🗑️ Reset Application State", use_container_width=True):
-        current_messages = st.session_state.messages
-        first_user_index = next(
-            (index for index, message in enumerate(current_messages) if message["role"] == "user"),
-            None
-        )
-        if first_user_index is not None:
-            st.session_state.conversation_history.append(
-                [dict(message) for message in current_messages[first_user_index:]]
-            )
-        st.session_state.selected_history_index = None
         st.session_state.messages = [
             {"role": "assistant", "content": "👋 Chat reset! Ready for your next zero-waste cooking challenge."}
         ]
         st.session_state.waste_saved_lbs = 1.0
         st.rerun()
-
-# =====================================================================
-# Selected Previous Conversation
-# =====================================================================
-selected_history_index = st.session_state.selected_history_index
-if selected_history_index is not None:
-    selected_conversation = st.session_state.conversation_history[selected_history_index]
-    st.subheader(f"Previous conversation: {conversation_title(selected_conversation)}")
-    if st.button("Close conversation details", key="close_history_details"):
-        st.session_state.selected_history_index = None
-        st.rerun()
-    for message in selected_conversation:
-        avatar = "🌱" if message["role"] == "assistant" else "👤"
-        with st.chat_message(message["role"], avatar=avatar):
-            st.markdown(message["content"])
-    st.divider()
 
 # =====================================================================
 # 4. Multi-Tab Navigation (Chat, RAG Knowledge, Agent Tools, Telemetry)
@@ -295,12 +250,6 @@ with tab_chat:
     # Chat Input Box
     user_prompt = st.chat_input("💬 Ask Chef Eco a question or refine your recipe...")
     prompt_to_run = user_prompt or active_quick
-
-    # Natural Conversational Defaults (Features 1-3 now handled dynamically in chat)
-    leftovers_text = prompt_to_run
-    staples_active = []
-    time_limit = 20
-    diet_choice = "Standard"
 
     if prompt_to_run:
         # Start Telemetry Trace
@@ -377,10 +326,8 @@ with tab_chat:
 {rag_context_text}
 
 [ACTIVE PANTRY INVENTORY & PREFERENCES]
-- From Your Kitchen (user-provided leftovers): {leftovers_text.strip() or 'None provided'}
-- Pantry Staples Assumed (checked only): {', '.join(staples_active) if staples_active else 'None checked'}
-- Treat all unchecked staples and unlisted ingredients as unavailable. Do not add default pantry items.
-- Do not invent a numeric serving count; state that portion count depends on how much of each ingredient is available.
+- Expiring Leftovers: {leftovers_text}
+- Checked Staples: {', '.join(staples_active) if staples_active else 'Cooking oil, salt, black pepper'}
 - Max Cooking Time: {time_limit} minutes
 - Dietary Goal: {diet_choice}
 - Agent Calculated Nutrition: {json.dumps(tool_results.get('nutrition', {}))}
@@ -403,12 +350,12 @@ with tab_chat:
                             final_response = f"""🍽️ **{title}**
 *A high-nutrition, zero-waste recipe generated using RAG knowledge grounding and dynamic pantry optimization.*
 
-⏱️ **Time & Portions:** 10 mins prep | 10 mins cook | Portion count depends on how much of each ingredient is available | Difficulty: Beginner (Total: ≤{time_limit} mins)
+⏱️ **Time & Yield:** 10 mins prep | 10 mins cook | 2 servings | Difficulty: Beginner (Total: ≤{time_limit} mins)
 📊 **Macro Profile (Agent Calculated):** ~{nutri.get('calories_kcal', 420)} kcal | {nutri.get('protein_g', 32)}g Protein | {nutri.get('carbohydrates_g', 48)}g Carbs | {nutri.get('fat_g', 11)}g Fat
 
 🥗 **Ingredients:**
-- *From Your Kitchen:* {leftovers_text.strip() or 'None provided'}
-- *Pantry Staples Assumed:* {', '.join(staples_active) if staples_active else 'None checked'}
+- *From Your Kitchen:* {leftovers_text}
+- *Pantry Staples Assumed:* {', '.join(staples_active) if staples_active else 'Cooking oil, salt, black pepper'}
 - *Smart Substitutes:* If lacking fresh garlic, use 1/2 tsp garlic powder; if lacking buttermilk, use 1 cup milk + 1 tbsp vinegar.
 
 🍳 **Step-by-Step Instructions:**
@@ -418,8 +365,6 @@ with tab_chat:
 4. **Season & Serve:** Finish with black pepper and salt. Serve immediately over warm rice or pasta.
 
 💡 **Eco-Tip (Verified Scrap Codex):** Save sweet corn liquid or allium vegetable scraps in a freezer bag. When full, simmer for 45 minutes to extract a nutrient-dense homemade vegetable stock!"""
-
-                    final_response = remove_assumed_serving_count(final_response)
 
                     # --- SECURITY LAYER 3 & 4: Output Post-Validation ---
                     is_valid_out, validated_text = st.session_state.security_manager.validate_output(final_response)
