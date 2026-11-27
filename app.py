@@ -145,39 +145,6 @@ with st.sidebar:
     st.divider()
 
     # Feature 1: Staples Form
-    st.markdown("#### 🧂 **Pantry Staples On Hand**")
-    c1, c2 = st.columns(2)
-    with c1:
-        st_oil = st.checkbox("Cooking Oil", value=True)
-        st_garlic = st.checkbox("Garlic / Onion", value=True)
-        st_rice = st.checkbox("Rice / Pasta", value=True)
-    with c2:
-        st_eggs = st.checkbox("Eggs", value=False)
-        st_dairy = st.checkbox("Butter / Milk", value=True)
-        st_soy = st.checkbox("Soy Sauce", value=False)
-
-    staples_active = []
-    if st_oil: staples_active.append("Cooking Oil")
-    if st_garlic: staples_active.append("Garlic/Onion")
-    if st_rice: staples_active.append("Rice/Pasta")
-    if st_eggs: staples_active.append("Eggs")
-    if st_dairy: staples_active.append("Butter/Milk")
-    if st_soy: staples_active.append("Soy Sauce")
-
-    # Feature 2: Leftovers Input
-    st.markdown("#### 🥬 **Fridge Leftovers to Rescue**")
-    leftovers_text = st.text_input(
-        "Expiring items:",
-        value="baby spinach, cooked pork loin, sweet corn",
-        placeholder="e.g., wilting kale, sour cream, roast chicken"
-    )
-
-    # Feature 3: Constraints & Preferences
-    st.markdown("#### ⏱️ **Cooking Constraints**")
-    time_limit = st.slider("Max Time:", 10, 60, 25, 5, format="%d mins")
-    diet_choice = st.selectbox("Dietary Restriction:", ["Standard / None", "Vegetarian", "Vegan", "Gluten-Free", "Dairy-Free"])
-
-    st.divider()
 
     # Feature 4: Live Sustainability Scorecard
     st.markdown("#### 📊 **Sustainability Metrics**")
