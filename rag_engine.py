@@ -2,13 +2,23 @@
 EcoPantry AI - Retrieval-Augmented Generation (RAG) Engine
 Integrates vector retrieval, document chunking, and similarity search
 over authoritative food safety, shelf-life, and zero-waste culinary databases.
+
+Resilient architecture: Uses scikit-learn when available, with an automatic
+zero-dependency pure-Python TF-IDF vector engine fallback.
 """
 import os
 import re
+import math
+from collections import Counter
 from typing import List, Dict, Any
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
+
+try:
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+    import numpy as np
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
 
 # Authoritative Grounding Knowledge Base
 DEFAULT_KNOWLEDGE_BASE = [
@@ -83,21 +93,88 @@ DEFAULT_KNOWLEDGE_BASE = [
     }
 ]
 
+# =====================================================================
+# Pure-Python TF-IDF Engine Fallback (Zero-Dependency)
+# =====================================================================
+STOPWORDS = {
+    'the', 'and', 'is', 'in', 'it', 'to', 'of', 'for', 'with', 'on', 'at', 
+    'by', 'from', 'an', 'be', 'this', 'that', 'or', 'as', 'are', 'was', 
+    'can', 'if', 'not', 'but', 'into', 'when', 'all', 'more', 'than'
+}
+
+def _tokenize(text: str) -> List[str]:
+    words = re.findall(r'\b[a-zA-Z]{2,}\b', text.lower())
+    return [w for w in words if w not in STOPWORDS]
+
+class PurePythonTfidfEngine:
+    def __init__(self):
+        self.doc_vectors = []
+        self.idf = {}
+
+    def fit_transform(self, corpus: List[str]):
+        tokenized_docs = [_tokenize(doc) for doc in corpus]
+        N = len(tokenized_docs)
+        
+        # Calculate Document Frequency
+        df = Counter()
+        for doc in tokenized_docs:
+            for word in set(doc):
+                df[word] += 1
+                
+        # Calculate Smooth IDF: log(1 + N / (1 + df)) + 1
+        self.idf = {word: math.log(1.0 + (N / (1.0 + freq))) + 1.0 for word, freq in df.items()}
+        
+        # Compute Document TF-IDF vectors
+        self.doc_vectors = [self._vectorize(doc) for doc in tokenized_docs]
+
+    def _vectorize(self, tokens: List[str]) -> Dict[str, float]:
+        if not tokens:
+            return {}
+        tf = Counter(tokens)
+        total = len(tokens)
+        vec = {word: (count / total) * self.idf.get(word, 1.0) for word, count in tf.items()}
+        # Normalize L2
+        norm = math.sqrt(sum(v * v for v in vec.values()))
+        if norm > 0:
+            vec = {k: v / norm for k, v in vec.items()}
+        return vec
+
+    def compute_similarity(self, query: str) -> List[float]:
+        q_vec = self._vectorize(_tokenize(query))
+        if not q_vec:
+            return [0.0] * len(self.doc_vectors)
+        
+        scores = []
+        for d_vec in self.doc_vectors:
+            # Dot product of normalized vectors = Cosine Similarity
+            score = sum(q_vec[term] * d_vec[term] for term in q_vec if term in d_vec)
+            scores.append(score)
+        return scores
+
+# =====================================================================
+# Main RAG Engine
+# =====================================================================
 class RAGEngine:
     def __init__(self):
         self.documents = list(DEFAULT_KNOWLEDGE_BASE)
-        self.vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(1, 2))
-        self.tfidf_matrix = None
+        self.sklearn_active = SKLEARN_AVAILABLE
+        if self.sklearn_active:
+            self.vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(1, 2))
+            self.tfidf_matrix = None
+        else:
+            self.pure_engine = PurePythonTfidfEngine()
         self._rebuild_index()
 
     def _rebuild_index(self):
-        """Builds or refreshes the TF-IDF vector index over the document corpus."""
+        """Builds or refreshes the vector index over the document corpus."""
         corpus = [f"{doc['title']} {doc['category']} {doc['content']}" for doc in self.documents]
-        self.tfidf_matrix = self.vectorizer.fit_transform(corpus)
+        if self.sklearn_active:
+            self.tfidf_matrix = self.vectorizer.fit_transform(corpus)
+        else:
+            self.pure_engine.fit_transform(corpus)
 
     def add_custom_document(self, title: str, content: str, category: str = "User Document", source: str = "Uploaded File") -> str:
         """Chunks and indexes an uploaded user document into the vector database."""
-        # Simple paragraph chunker
         chunks = [c.strip() for c in re.split(r'\n\s*\n', content) if len(c.strip()) > 40]
         if not chunks:
             chunks = [content.strip()]
@@ -118,16 +195,18 @@ class RAGEngine:
         self._rebuild_index()
         return f"Successfully indexed {len(chunks)} knowledge chunk(s) from '{title}'."
 
-    def retrieve(self, query: str, top_k: int = 2, threshold: float = 0.08) -> List[Dict[str, Any]]:
+    def retrieve(self, query: str, top_k: int = 2, threshold: float = 0.05) -> List[Dict[str, Any]]:
         """
         Executes semantic cosine similarity vector search.
         Returns top-k matching documents passing relevance threshold.
         """
-        query_vector = self.vectorizer.transform([query])
-        similarities = cosine_similarity(query_vector, self.tfidf_matrix).flatten()
-        
-        # Sort indices by descending similarity score
-        top_indices = np.argsort(similarities)[::-1]
+        if self.sklearn_active:
+            query_vector = self.vectorizer.transform([query])
+            similarities = cosine_similarity(query_vector, self.tfidf_matrix).flatten()
+            top_indices = np.argsort(similarities)[::-1]
+        else:
+            similarities = self.pure_engine.compute_similarity(query)
+            top_indices = sorted(range(len(similarities)), key=lambda i: similarities[i], reverse=True)
         
         results = []
         for idx in top_indices:
